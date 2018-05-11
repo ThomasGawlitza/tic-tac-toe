@@ -1,13 +1,11 @@
 /* Type representing a grid cell */
-type gridCellT =
-  | X
-  | O
-  | Empty;
-
 /* State declaration.
    The grid is a simple linear list.
    The turn uses a gridCellT to figure out whether it's X or O's turn.
    The winner will be a list of indices which we'll use to highlight the grid when someone won. */
+
+open Common;
+
 type state = {
   grid: list(gridCellT),
   turn: gridCellT,
@@ -18,7 +16,8 @@ type state = {
 /* Action declaration */
 type action =
   | Restart
-  | Click(int);
+  | Click(gridCellT, int)
+  | ChangeMe(gridCellT);
 
 /* Component template declaration.
    Needs to be **after** state and action declarations! */
@@ -42,7 +41,12 @@ let make = _children => {
   /* State transitions */
   reducer: (action, state) =>
     switch (state, action) {
-    | ({turn, grid}, Click(cell)) =>
+    | (state, ChangeMe(me)) => {
+      Js.log(state);
+      Js.log(me);
+      ReasonReact.Update({...state, you: me})
+    }
+    | ({turn, grid}, Click(player, cell)) => 
       /* Apply the action to the grid first, then we check if this new grid is in a winning state. */
       let newGrid =
         List.mapi(
@@ -95,12 +99,16 @@ let make = _children => {
           None;
         };
       /* Return new winner, new turn and new grid. */
-      ReasonReact.Update({
+      ReasonReact.UpdateWithSideEffects({
         ...state,
         winner,
         turn: turn === X ? O : X,
         grid: newGrid,
-      });
+      },
+      self => 
+        if (player == self.state.you)
+          Client.emit(Client.socket, Common.Checked, (self.state.you, cell))
+      );
     | (_, Restart) =>
       /* Reset the entire state */
       ReasonReact.Update({
@@ -110,6 +118,22 @@ let make = _children => {
         winner: None,
       })
     },
+  didMount: self => {
+    Client.emit(Client.socket, Common.WhoAmI, ());
+    Client.on(
+      Client.socket, 
+      Common.YouAre, 
+      i => self.send(ChangeMe(i))
+    );
+    Client.on(
+      Client.socket, 
+      Common.Checked, 
+      ((player, idx)) => {
+        Js.log("JUHU: received event");
+        self.send(Click(player, idx))
+      }
+    )
+  },
   render: self => {
     let yourTurn = self.state.you == self.state.turn;
     let message =
@@ -193,7 +217,7 @@ let make = _children => {
                       canClick && yourTurn && self.state.winner == None;
                     <div
                       key=(string_of_int(i))
-                      onClick=(_event => canClick ? self.send(Click(i)) : ())
+                      onClick=(_event => canClick ? self.send(Click(self.state.you, i)) : ())
                       style=(
                         ReactDOMRe.Style.make(
                           ~display="flex",

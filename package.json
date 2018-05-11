@@ -2,6 +2,7 @@
   "name": "tic-tac-toe",
   "version": "0.1.0",
   "scripts": {
+    "clean": "bsb -clean",
     "build": "bsb -make-world",
     "start": "bsb -make-world -w"
   },
